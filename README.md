@@ -65,9 +65,9 @@ class serialBusServo:
     def __change_addr__(self, original_addr, new_addr):
         REG_ID   = 0x05
         REG_LOCK = 0x37 # you can find the register addr in misc/Comm_Proto_ST3215/磁编码sts-内存表解析_220714_v3.xlsx
-        self.packetHandler.write1ByteTxRx(original_addr, REG_LOCK,        1) # 解锁EPROM-SAFE
-        self.packetHandler.write1ByteTxRx(original_addr, REG_ID  , new_addr) # 更改ID
-        self.packetHandler.write1ByteTxRx(new_addr     , REG_LOCK,        0) # 上锁EPROM-SAFE
+        self.packetHandler.write1ByteTxRx(original_addr, REG_LOCK,        0) # unlock EPROM
+        self.packetHandler.write1ByteTxRx(original_addr, REG_ID  , new_addr) # set new ID
+        self.packetHandler.write1ByteTxRx(new_addr     , REG_LOCK,        1) # lock EPROM
 
 servo = serialBusServo()
 ```
