@@ -1,4 +1,4 @@
-### Servo and Driver Board
+### Pics
 <table>
     <tr>
         <td>
@@ -32,10 +32,22 @@
 ### 接线方式
 * UART: <b style='color:red'>Tx-Tx, Rx-Rx</b>
 ### SDK
-* Waveshare provides two python SDKs [STServo_Python.zip](https://www.waveshare.net/wiki/%E6%96%87%E4%BB%B6:STServo_Python.zip) and [SCServo_Python.zip](https://www.waveshare.net/wiki/%E6%96%87%E4%BB%B6:SCServo_Python.zip), but only SCServo Python is needed. 
+* Waveshare provides two python SDKs [STServo_Python.zip](https://www.waveshare.net/wiki/%E6%96%87%E4%BB%B6:STServo_Python.zip) and [SCServo_Python.zip](https://www.waveshare.net/wiki/%E6%96%87%E4%BB%B6:SCServo_Python.zip), but only SCServo_Python is needed. 
 ```sh
-unzip SCServo_Python.zip scservo_sdk/*
+unzip ./misc/SCServo_Python.zip scservo_sdk/*
 ```
+### Directory
+<table>
+    <tr>
+        <td> pyServo.py </td>
+        <td>library</td>
+    </tr>
+    <tr>
+        <td>example.ipynb</td>
+        <td>how should library be used </td>
+    </tr>
+</table>
+
 ### Usage
 * Instantiation
 ```py
