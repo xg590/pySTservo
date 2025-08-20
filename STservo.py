@@ -62,7 +62,6 @@ class ST3215:
     
     def __recv_packet__(self, id, params_in_bytes=False):
         # 0xFF 0xFF id length error params checksum
-        # 
         while True:
             if b'\xff\xff' ==  self.ser.read(2):
                 break
@@ -168,9 +167,9 @@ class ST3215:
     def __set_posi_corr__(self, dev_id=1, step=0):
         if step > 2047        : raise
         if self.model == 'SCS': raise # There is no position correction for SCS servo
-        #self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   0) # unlock EPROM
+        self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   0) # unlock EPROM
         self.write(dev_id, self.MEM_ADDR_STEP_CORR, step)
-        #self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   1) # lock EPROM
+        self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   1) # lock EPROM
         
     def __get_posi_corr__(self, dev_id=1):
         if self.model == 'SCS': raise # There is no position correction for SCS servo
@@ -202,7 +201,7 @@ class ST3215:
             if posi > 0x0FFF: raise
             byte_arr = [acc, posi & 0xFF, posi >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8]
             self.write(dev_id, self.MEM_ADDR_ACC, byte_arr)
-        elif isinstance(posi, list): # 
+        elif isinstance(posi, list): # 每个servo一个goal posi
             byte_arr = []
             for s in posi:
                 if s > 0x0FFF : raise
@@ -224,45 +223,3 @@ class ST3215:
             else:
                 print('[ERROR]', _id, old_dict[_id])
         return new_dict
-            
-def test():
-    print('ping', servo.ping(1))
-    #servo.write(254, 0x05, [1]) 把舵机的ID都改成1
-    print('write', servo.write(1, 0x2A, [0X00, 0x10, 0x00, 0x00, 0xE8, 0x03]))
-    status, _params = servo.read(1, 0x38, 2)
-    print('read posi', status, int.from_bytes(_params, byteorder='little'))
-
-    print('reg_write', servo.reg_write(1, 0x2A, [0X00, 0x01, 0x00, 0x00, 0xE8, 0x03]))
-    print('reg_write', servo.reg_write(2, 0x2A, [0X00, 0x01, 0x00, 0x00, 0xE8, 0x03]))
-    servo.action()
-    servo.sync_write([1, 2], 0x2A, [0x00, 0x08, 0x00, 0x00, 0x00, 0x01])
-    print('sync_read', servo.sync_read([1, 2], 0x2A, 2))
-
-if __name__ == "__main__1":
-    servo = ST3215()
-    posi = 0x0FFF
-    servo.move2Posi(dev_id=4, posi=posi, velo=1800, acc=100)
-    servo.move2Posi(dev_id=3, posi=posi, velo=1800, acc=100)
-    time.sleep(1)
-    print('posi', servo.readPosi(dev_id=[3, 4], debug=True))
-    time.sleep(6)
-    print('posi', servo.readPosi(dev_id=[3, 4], debug=True))
-    time.sleep(3)
-    servo.move2Posi(dev_id=[3, 4], posi=[0, 0], velo=1800, acc=100)
-    servo.ser.close()
-
-if __name__ == "__main__1":
-    servo = ST3215()
-    servo.move2Posi(dev_id=[1, 2, 3, 4, 5, 6], posi=[2600, 1200, 3900, 3500, 3000, 2500], velo=1800, acc=100)
-    servo.ser.close()
-
-if __name__ == "__main__0":
-    servo = ST3215()
-    print('posi', servo.readPosi(dev_id=[1, 2, 3, 4, 5, 6], debug=True))
-    servo.ser.close()
- 
-if __name__ == "__main__1":
-    servo = ST3215()
-    servo.__change_addr__(1, 4)
-    servo.__change_addr__(2, 3)
- 
