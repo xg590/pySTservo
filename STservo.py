@@ -9,6 +9,7 @@ class ST3215:
         # eg) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
         self.ser = serial.Serial(port=port, baudrate=baudrate, bytesize=serial.EIGHTBITS, timeout=0)
         self.model = 'STS'
+        self.ser.timeout = 3
         return None
 
     @property
@@ -57,8 +58,6 @@ class ST3215:
         length = len(params) + 2
         checksum = 255 - (id + length + instruction + sum(params)) & 0xFF
         packet = [0xFF, 0xFF, id, length, instruction] + params + [checksum]
-        print([hex(i) for i in packet])
-        print( packet )
         return bytearray(packet)
     
     def __recv_packet__(self, id, params_in_bytes=False):
@@ -144,8 +143,7 @@ class ST3215:
         elif   isinstance(byte_arr[0], list): params = [byte_addr, len(byte_arr[0])] + [j for id, byte in zip(id_arr, byte_arr) for j in [id] + byte    ]
         else: raise
         packet = self.__make_packet__(id, instruction, params)
-        print('packet', packet)
-        print([hex(i) for i in packet])
+        if debug: print('packet', [hex(i) for i in packet])
         self.ser.write(packet)
         return None
         
@@ -197,20 +195,35 @@ class ST3215:
         mode = int.from_bytes(_params)
         return ['posi', 'wheel', 'pwm', 'step'][mode]
 
-    def move2Pos(self, dev_id=1, posi=0, speed=800, acc=100):
+    def move2Posi(self, dev_id=1, posi=0, velo=800, acc=100):
         if acc > 254 or acc < 0: raise
-        if speed > 0xFFFF      : raise
+        if velo > 0xFFFF      : raise
         if   isinstance(posi, int): # 所有servo一个速度
             if posi > 0x0FFF: raise
-            byte_arr = [acc, posi & 0xFF, posi >> 8, 0x00, 0x00, speed & 0xFF, speed >> 8]
+            byte_arr = [acc, posi & 0xFF, posi >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8]
             self.write(dev_id, self.MEM_ADDR_ACC, byte_arr)
         elif isinstance(posi, list): # 
             byte_arr = []
             for s in posi:
                 if s > 0x0FFF : raise
-                byte_arr.append([acc, s & 0xFF, s >> 8, 0x00, 0x00, speed & 0xFF, speed >> 8])
+                byte_arr.append([acc, s & 0xFF, s >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8])
             self.sync_write(dev_id, self.MEM_ADDR_ACC, byte_arr)
-            
+    
+    def readPosi(self, dev_id=1, debug=False):
+        if   isinstance(dev_id, int): dev_id = [dev_id]
+        elif isinstance(dev_id, list): pass
+        else: raise
+        old_dict = self.sync_read(dev_id, self.MEM_ADDR_PRESENT_POSITION, 6, debug=debug)
+        new_dict = {}
+        for _id in dev_id:
+            if old_dict[_id]['status'] == 0:
+                new_dict[_id] = {}
+                new_dict[_id]['posi'] = int.from_bytes(old_dict[_id]['params'][0:2], byteorder='little')
+                new_dict[_id]['velo'] = int.from_bytes(old_dict[_id]['params'][2:4], byteorder='little')
+                new_dict[_id]['load'] = int.from_bytes(old_dict[_id]['params'][4:6], byteorder='little')
+            else:
+                print('[ERROR]', _id, old_dict[_id])
+        return new_dict
             
 def test():
     print('ping', servo.ping(1))
@@ -225,10 +238,31 @@ def test():
     servo.sync_write([1, 2], 0x2A, [0x00, 0x08, 0x00, 0x00, 0x00, 0x01])
     print('sync_read', servo.sync_read([1, 2], 0x2A, 2))
 
-if __name__ == "__main__":
+if __name__ == "__main__1":
     servo = ST3215()
-    servo.move2Pos(dev_id=1, posi=0xFFF, speed=1800, acc=100)
-    servo.move2Pos(dev_id=2, posi=0xFFF, speed=1800, acc=100)
-    time.sleep(5)
-    servo.move2Pos(dev_id=[1, 2], posi=[0, 0], speed=1800, acc=100)
+    posi = 0x0FFF
+    servo.move2Posi(dev_id=4, posi=posi, velo=1800, acc=100)
+    servo.move2Posi(dev_id=3, posi=posi, velo=1800, acc=100)
+    time.sleep(1)
+    print('posi', servo.readPosi(dev_id=[3, 4], debug=True))
+    time.sleep(6)
+    print('posi', servo.readPosi(dev_id=[3, 4], debug=True))
+    time.sleep(3)
+    servo.move2Posi(dev_id=[3, 4], posi=[0, 0], velo=1800, acc=100)
     servo.ser.close()
+
+if __name__ == "__main__1":
+    servo = ST3215()
+    servo.move2Posi(dev_id=[1, 2, 3, 4, 5, 6], posi=[2600, 1200, 3900, 3500, 3000, 2500], velo=1800, acc=100)
+    servo.ser.close()
+
+if __name__ == "__main__0":
+    servo = ST3215()
+    print('posi', servo.readPosi(dev_id=[1, 2, 3, 4, 5, 6], debug=True))
+    servo.ser.close()
+ 
+if __name__ == "__main__1":
+    servo = ST3215()
+    servo.__change_addr__(1, 4)
+    servo.__change_addr__(2, 3)
+ 
