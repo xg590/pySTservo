@@ -174,14 +174,15 @@ class ST3215:
             step += 0x800
             step = [ step & 0xFF, step >> 8]
         if self.model == 'SCS': raise # There is no position correction for SCS servo
-        self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   0) # unlock EPROM
+        if save: self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   0) # unlock EPROM
         self.write(dev_id, self.MEM_ADDR_STEP_CORR, step)
-        self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   1) # lock EPROM
+        if save: self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   1) # lock EPROM
         
     def __get_posi_corr__(self, dev_id=1):
         if self.model == 'SCS': raise # There is no position correction for SCS servo
         status, _params = self.read(dev_id, self.MEM_ADDR_STEP_CORR, 2)
         corr = int.from_bytes(_params, byteorder='little')
+        print(_params, corr)
         if corr > 0x800:
             corr -= 0x800
             corr *= -1
@@ -207,11 +208,7 @@ class ST3215:
     def move2Posi(self, dev_id=1, posi=0, velo=800, acc=100):
         if acc > 254 or acc < 0: raise
         if velo > 0xFFFF      : raise
-        if   isinstance(posi, int): # 所有servo一个速度
-            if posi > 0x0FFF: raise
-            byte_arr = [acc, posi & 0xFF, posi >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8]
-            self.write(dev_id, self.MEM_ADDR_ACC, byte_arr)
-        elif isinstance(posi, list): # 每个servo一个goal posi
+        if isinstance(posi, list): # 每个servo一个goal posi
             byte_arr = []
             for s in posi:
                 if s > 0x0FFF : raise
