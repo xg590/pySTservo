@@ -164,7 +164,7 @@ class ST3215:
         self.write(original_dev_id, self.MEM_ADDR_ID        , new_dev_id) # set new ID
         self.write(new_dev_id     , self.MEM_ADDR_EPROM_LOCK,          1) # lock EPROM
 
-    def __set_posi_corr__(self, dev_id=1, step=0):
+    def __set_posi_corr__(self, dev_id=1, step=0, save=False):
         if step > 2047 or step < -2047 :
             raise
         elif step > 0:
@@ -182,7 +182,6 @@ class ST3215:
         if self.model == 'SCS': raise # There is no position correction for SCS servo
         status, _params = self.read(dev_id, self.MEM_ADDR_STEP_CORR, 2)
         corr = int.from_bytes(_params, byteorder='little')
-        print(_params, corr)
         if corr > 0x800:
             corr -= 0x800
             corr *= -1
