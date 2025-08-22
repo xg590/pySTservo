@@ -167,7 +167,7 @@ class ST3215:
     def __set_posi_corr__(self, dev_id=1, step=0, save=False):
         if step > 2047 or step < -2047 :
             raise
-        elif step > 0:
+        elif step >= 0:
             step = [ step & 0xFF, step >> 8]
         else: # negative number
             step *= -1
