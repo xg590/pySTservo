@@ -217,12 +217,14 @@ class ST3215:
     def move2Posi(self, dev_id=1, posi=0, velo=800, acc=100):
         if acc > 254 or acc < 0: raise
         if velo > 0xFFFF      : raise
-        if isinstance(posi, list): # 每个servo一个goal posi
-            byte_arr = []
-            for s in posi:
-                if s > 0x0FFF : raise
-                byte_arr.append([acc, s & 0xFF, s >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8])
-            self.sync_write(dev_id, self.MEM_ADDR_ACC, byte_arr)
+        if isinstance(  posi, int): posi   = [posi]
+        if isinstance(dev_id, int): dev_id = [dev_id]
+        # 每个servo一个goal posi
+        byte_arr = []
+        for s in posi:
+            if s > 0x0FFF : raise
+            byte_arr.append([acc, s & 0xFF, s >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8])
+        self.sync_write(dev_id, self.MEM_ADDR_ACC, byte_arr)
     
     def readPosi(self, dev_id=1, debug=False):
         if   isinstance(dev_id, int): dev_id = [dev_id]
@@ -239,3 +241,129 @@ class ST3215:
             else:
                 print('[ERROR]', _id, old_dict[_id])
         return new_dict
+
+class EncoderUnwrapper:
+    def __init__(self, curr_posi=0, abs_max_posi=4095):
+        self.last_raw     = None           # 上一次原始读数
+        self.posi         = curr_posi      # 累计位置（单位：步）
+        self.total_step = abs_max_posi + 1 # 编码器（0~4095）一圈共4096步
+
+    def update(self, raw_value):
+        """
+        输入编码器原始读数 (0 ~ 4095)，返回连续的累积位置（可正可负）
+        """
+        if self.last_raw:
+            # 计算相对变化量
+            delta = raw_value - self.last_raw
+    
+            # 处理跳变：如果跨过了0点（顺时针4095->0 或 逆时针0->4095）
+            if  delta  >  self.total_step // 2:  # 逆向跳变
+                # 假设逆时针转，跳变前100，跳变后4000，delta为正3900，显著大于最大步数的一半
+                delta -=  self.total_step
+            elif delta < -self.total_step // 2:  # 顺向跳变
+                # 假设顺时针转，跳变前4000，跳变后100，delta为负
+                delta +=  self.total_step
+    
+            # 累加
+            self.posi += delta
+            self.last_raw = raw_value
+            return None
+        
+        else:
+            # 第一次调用，初始化
+            self.last_raw = raw_value 
+            return None
+
+    def get_degrees(self):
+        """返回累计角度，单位：度"""
+        return self.posi * (360.0 / self.total_step)
+
+# ==== 使用示例 ====
+if __name__ == "__main__":
+    encoder = EncoderUnwrapper(curr_posi=10000)
+
+    # 模拟原始读数变化（顺时针转过一圈多一些）
+    raw_values = [1, 1000, 2500, 4000, 4090, 4092, 4095, 2, 10, 100, 500, 1000, 2000, 3000, 1]
+    raw_values = raw_values[::-1]
+    for raw in raw_values:
+        encoder.update(raw)
+        deg = encoder.get_degrees()
+        print(f"raw={raw:4d},  posi={encoder.posi:6d},  deg={deg:8.2f}")
+
+class Calibrator(ST3215):
+    def __init__(self, port='COM17', dev_id=[1, 2, 3, 4, 5, 6], abs_max_posi=4095, __set_posi_corr__=True):
+        super().__init__(port)
+        self.total_step = abs_max_posi + 1
+        for _id in dev_id:
+            if __set_posi_corr__:
+                self.__set_posi_corr__(dev_id=_id, step=0, save=False)
+        posi_raw = self.readPosi(dev_id=dev_id)
+        encoder = {_id: EncoderUnwrapper(curr_posi=posi_raw[_id]["posi"], abs_max_posi=abs_max_posi)
+                    for _id in dev_id}
+        for _id in dev_id:
+            encoder[_id].min_step = abs_max_posi
+            encoder[_id].max_step = 0
+            encoder[_id].posi_raw = 0
+        self.encoder = encoder
+        self.dev_id  = dev_id
+        print('initialized')
+
+    def update(self):
+        print(f' id |  min |  max |  len | curr |  raw')
+        posi_raw = self.readPosi(dev_id=self.dev_id)
+        for _id in self.dev_id:
+            _posi_raw = posi_raw[_id]["posi"]
+            self.encoder[_id].posi_raw = _posi_raw 
+            self.encoder[_id].update(_posi_raw)
+            min_step = self.encoder[_id].min_step
+            max_step = self.encoder[_id].max_step
+            posi     = self.encoder[_id].posi
+            if posi < min_step:
+                self.encoder[_id].min_step = posi
+            elif posi > max_step:
+                self.encoder[_id].max_step = posi
+            print(f'{_id:3d} |{min_step: 5d} |{max_step: 5d} |{max_step-min_step: 5d}|{posi: 5d}|{_posi_raw: 5d}')
+
+    def config(self):
+        conf = {}
+        print(f' id |  min  | range | corr')
+        MARGIN = 100
+        for _id in self.dev_id:
+            min  = self.encoder[_id].min_step 
+            max  = self.encoder[_id].max_step
+            if   min < -2047:
+                corr = 4096 + min
+            elif min >  2047:
+                corr = min - 4096
+            else:
+                corr = min
+            corr -= MARGIN
+            if   corr >  2047: 
+                corr  =  2047
+            elif corr < -2047: 
+                corr  = -2047
+            print(f'{_id:3d} | {min: 5d} | {max-min: 5d} | {corr: 5d}')
+            conf[_id] = {'min':min, 'range':max-min, 'corr':corr}
+        return conf
+        '''
+        if max - min < 2047: 
+            if min > 2047:           # min:3500 raw:3500 corr:min-4096
+                corr = min - 4096
+            elif min > 0:
+                corr = min
+            elif min < 0:            # min:-500 raw:3500 corr:-500=min  
+                corr = min
+            else:
+                raise
+        else: # max - min > 2047     #   min    raw   corr
+            if   min > 2047:         #  3500   3500   -500=min-4000 
+                corr = min - 4096    
+            elif min > 0:            #   500    500    500=min 
+                corr = min    
+            elif min < -2047:        # -3500    500    500=4000+min
+                corr = 4096 + min  
+            elif min < 0:            #  -500   3500   -500=min
+                corr = min
+            else:
+                raise
+        '''
