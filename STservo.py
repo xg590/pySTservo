@@ -62,9 +62,16 @@ class ST3215:
     
     def __recv_packet__(self, id, params_in_bytes=False):
         # 0xFF 0xFF id length error params checksum
+        TIMEOUT = 3 # raise an Error in case no response while one is expected
+        _t = time.time()
         while True:
-            if b'\xff\xff' ==  self.ser.read(2):
+            header = self.ser.read(2)
+            if b'\xff\xff' == header:
                 break
+            if time.time() - _t > TIMEOUT:
+                print(f'[Error] [ID: {id}] Timeout for __recv_packet__]')
+                print(f'[Debug] [ID: {id}] Response: {header}')
+                raise TimeoutError
         _id       = int.from_bytes(self.ser.read(   1   ))
         _length   = int.from_bytes(self.ser.read(   1   ))
         _data     =                self.ser.read(_length)
@@ -87,8 +94,11 @@ class ST3215:
         instruction = 0x01
         packet = self.__make_packet__(id, instruction, params)
         self.ser.write(packet)
-        status, _params = self.__recv_packet__(id)
-        return status, _params
+        try: 
+            status, _params = self.__recv_packet__(id)
+            return status, _params
+        except TimeoutError:
+            return None
 
     def read(self, id, byte_addr, byte_len):
         params = [byte_addr, byte_len]
