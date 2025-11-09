@@ -13,6 +13,8 @@
         <td>
             <a href='https://www.waveshare.net/wiki/ST3215_Servo'>ST3215 (6-12V)</a>
         </td>
+        <td>
+        </td>
     </tr>
     <tr>
         <td>Thumbnail</td>
@@ -23,11 +25,13 @@
         <td>Product Link</td>
         <td><a href='https://www.waveshare.net/wiki/Bus_Servo_Adapter_(A)'>Bus Servo Adapter (A)</a></td>
         <td><a href='https://www.waveshare.net/wiki/Servo_Driver_with_ESP32'>Servo Driver with ESP32</a></td>
+        <td><a href='https://www.waveshare.net/wiki/Servo_Driver_with_ESP32'>Pi Servo Driver HAT</a></td>
     </tr>
     <tr>
         <td>Thumbnail</td>
         <td><img src='./misc/Adapter_A.jpg'   height="100"></img></td>
         <td><img src='./misc/Driver_with_ESP32.jpg' height="100"></img></td>
+        <td><img src='./misc/Driver_HAT.jpg' height="200"></img></td>
     </tr>
 </table>
 
@@ -39,6 +43,16 @@
 * 产品尺寸 measurement：42mm x 33mm
 * 固定孔通径 diameter of mounting hole：2.5mm 
 * 适用舵机 compatible servo：多达up to 253个ST/SC系列总线舵机
+
+## Bus Servo Driver HAT (A)
+
+1. ESP32 module
+3. UART control switch
+9. XT60 connector
+10. 5.5×2.5 DC power jack (9~25V)
+11. Power supply screw terminal
+12. RS485 serial bus servo header
+* XT60 / DC5525 / screw terminal are internally connected
 
 ## Servo Driver with ESP32 Spec
 

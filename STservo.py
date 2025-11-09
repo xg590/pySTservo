@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import serial, time
 
-# define baud rate 
+# define baud rate
 BAUD_RATE = {'1M':0,'500K':1,'250K':2,'128K':3,'115200':4,'76800':5,'57600':6,'38400':7}
 
 class ST3215:
@@ -19,18 +19,15 @@ class ST3215:
     @model.setter
     def model(self, value):
         if value == 'STS': # {'ST3215': 0, 'SC09': 1}
-            self.MEM_ADDR_EPROM_LOCK = 0x37
-
+            self.BYTE_ORDER = 'little'
             # define memory table
             #-------EPROM(read only)--------
-            SMS_STS_MODEL                = 0x03
-            
+            self.SMS_STS_MODEL                = 0x03
+
             #-------EPROM(read & write)--------
-            self.MEM_ADDR_ID                  = 0x05
-            self.MEM_ADDR_BAUD_RATE           = 0x06
             self.MEM_ADDR_STEP_CORR           = 0x1F
             self.MEM_ADDR_MODE                = 0x21
-            
+
             #-------SRAM(read & write)--------
             self.MEM_ADDR_TORQUE_ENABLE       = 0x28
             self.MEM_ADDR_ACC                 = 0x29
@@ -38,7 +35,7 @@ class ST3215:
             self.MEM_ADDR_GOAL_TIME           = 0x2C
             self.MEM_ADDR_GOAL_SPEED          = 0x2E
             self.MEM_ADDR_EPROM_LOCK          = 0x37
-            
+
             #-------SRAM(read only)--------
             self.MEM_ADDR_PRESENT_POSITION    = 0x38
             self.MEM_ADDR_PRESENT_SPEED       = 0x3A
@@ -49,7 +46,29 @@ class ST3215:
             self.MEM_ADDR_PRESENT_CURRENT     = 0x45
 
         elif value == 'SCS':
-            self.MEM_ADDR_EPROM_LOCK = 0x30
+            self.BYTE_ORDER = 'big'
+            # define memory table
+            #-------EPROM(read only)--------
+            self.SMS_STS_MODEL                = 0x03
+
+            #-------EPROM(read & write)--------
+            self.MEM_ADDR_ID                  = 0x05
+            self.MEM_ADDR_BAUD_RATE           = 0x06
+
+            #-------SRAM(read & write)--------
+            self.MEM_ADDR_TORQUE_ENABLE       = 0x28
+            self.MEM_ADDR_GOAL_POSITION       = 0x2A
+            self.MEM_ADDR_GOAL_SPEED          = 0x2E
+            self.MEM_ADDR_EPROM_LOCK          = 0x30
+
+            #-------SRAM(read only)--------
+            self.MEM_ADDR_PRESENT_POSITION    = 0x38
+            self.MEM_ADDR_PRESENT_SPEED       = 0x3A
+            self.MEM_ADDR_PRESENT_LOAD        = 0x3C
+            self.MEM_ADDR_PRESENT_VOLTAGE     = 0x3E
+            self.MEM_ADDR_PRESENT_TEMPERATURE = 0x3F
+            self.MEM_ADDR_MOVING              = 0x42
+
         else:
             raise
         self._model = value
@@ -59,7 +78,7 @@ class ST3215:
         checksum = 255 - (id + length + instruction + sum(params)) & 0xFF
         packet = [0xFF, 0xFF, id, length, instruction] + params + [checksum]
         return bytearray(packet)
-    
+
     def __recv_packet__(self, id, params_in_bytes=False):
         # 0xFF 0xFF id length error params checksum
         TIMEOUT = 3 # raise an Error in case no response while one is expected
@@ -82,19 +101,19 @@ class ST3215:
         try:
             assert id == _id
         except AssertionError:
-            print(f'sender id: {id}, receiver id: {_id}')
+            print(f'[AssertionError] sender id: {id}, receiver id: {_id}')
         assert _checksum == 255 - (_id + _length + error + sum(_params)) & 0xFF
         if params_in_bytes:
             return error, _data[1:-1]
         else:
             return error, _params
-        
+
     def ping(self, id):
         params = []
         instruction = 0x01
         packet = self.__make_packet__(id, instruction, params)
         self.ser.write(packet)
-        try: 
+        try:
             status, _params = self.__recv_packet__(id)
             return status, _params
         except TimeoutError:
@@ -115,10 +134,8 @@ class ST3215:
         elif isinstance(byte_arr, int):
             if byte_arr < 256:
                 byte_arr = [byte_arr]
-            elif byte_arr < 65536:
-                byte_arr = [byte_arr , byte_arr>>8]
             else:
-                raise
+                byte_arr = list(int.to_bytes(length=2, byteorder=self.BYTE_ORDER, signed=False))
         else:
             raise
         params = [byte_addr] + byte_arr
@@ -148,15 +165,16 @@ class ST3215:
         id = 0xFE
         instruction = 0X83
         if not isinstance(id_arr, list): raise
-        if     isinstance(byte_arr[0], int ): params = [byte_addr, len(byte_arr   )] + [j for id       in     id_arr            for j in [id] + byte_arr]
-        elif   isinstance(byte_arr[0], list): params = [byte_addr, len(byte_arr[0])] + [j for id, byte in zip(id_arr, byte_arr) for j in [id] + byte    ]
-        else: raise
+        params = [byte_addr, len(byte_arr[0])] + [j for id, byte in zip(id_arr, byte_arr) for j in [id] + byte]
         packet = self.__make_packet__(id, instruction, params)
         if debug: print('packet', [hex(i) for i in packet])
         self.ser.write(packet)
         return None
-        
-    def sync_read(self, id_arr, byte_addr, byte_len, debug=False): # id, byte_addr, 
+
+    def sync_read(self, id_arr, byte_addr, byte_len, debug=False): # id, byte_addr,
+        if self.model == 'SCS': 
+            print('Sync Read is not avaiable for SCS Servo')
+            raise
         # 一次发信同步完成，但每个舵机被改的地址都一样，比如都是改速度。
         id = 0xFE
         instruction = 0X82
@@ -178,7 +196,7 @@ class ST3215:
         if step > 2047 or step < -2047 :
             raise
         elif step >= 0:
-            step = [ step & 0xFF, step >> 8]
+            step = list(step.to_bytes(length=2, byteorder=self.BYTE_ORDER, signed=False))
         else: # negative number
             step *= -1
             step += 0x800
@@ -187,11 +205,11 @@ class ST3215:
         if save: self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   0) # unlock EPROM
         self.write(dev_id, self.MEM_ADDR_STEP_CORR, step)
         if save: self.write(dev_id, self.MEM_ADDR_EPROM_LOCK,   1) # lock EPROM
-        
+
     def __get_posi_corr__(self, dev_id=1):
         if self.model == 'SCS': raise # There is no position correction for SCS servo
         status, _params = self.read(dev_id, self.MEM_ADDR_STEP_CORR, 2)
-        corr = int.from_bytes(_params, byteorder='little')
+        corr = int.from_bytes(_params, byteorder=self.BYTE_ORDER)
         if corr > 0x800:
             corr -= 0x800
             corr *= -1
@@ -214,30 +232,30 @@ class ST3215:
         mode = int.from_bytes(_params)
         return ['posi', 'wheel', 'pwm', 'step'][mode]
 
-    def move2Posi(self, dev_id=1, posi=0, velo=800, acc=100):
-        if acc > 254 or acc < 0: raise
-        if velo > 0xFFFF      : raise
-        if isinstance(  posi, int): posi   = [posi]
-        if isinstance(dev_id, int): dev_id = [dev_id]
+    def set_acc(self, id_arr=[1], acc_arr=[1]):
+        self.sync_write(id_arr, self.MEM_ADDR_ACC, acc_arr)
+
+    def get_acc(self, id_arr=[1]):
+        self.sync_read(id_arr, self.MEM_ADDR_ACC, 1)
+
+    def move2Posi(self, id_arr=[1], posi_arr=[0], velo_arr=[80]):
         # 每个servo一个goal posi
         byte_arr = []
-        for s in posi:
-            if s > 0x0FFF : raise
-            byte_arr.append([acc, s & 0xFF, s >> 8, 0x00, 0x00, velo & 0xFF, velo >> 8])
-        self.sync_write(dev_id, self.MEM_ADDR_ACC, byte_arr)
-    
-    def readPosi(self, dev_id=1, debug=False):
-        if   isinstance(dev_id, int): dev_id = [dev_id]
-        elif isinstance(dev_id, list): pass
-        else: raise
-        old_dict = self.sync_read(dev_id, self.MEM_ADDR_PRESENT_POSITION, 6, debug=debug)
+        for posi, velo in zip(posi_arr, velo_arr):
+            posi = list(posi.to_bytes(length=2, byteorder=self.BYTE_ORDER, signed=False))
+            velo = list(velo.to_bytes(length=2, byteorder=self.BYTE_ORDER, signed=False))
+            byte_arr.append(posi + [0x00, 0x00] + velo)
+        self.sync_write(id_arr, self.MEM_ADDR_GOAL_POSITION, byte_arr)
+
+    def readPosi(self, id_arr=[1], debug=False):
+        old_dict = self.sync_read(id_arr, self.MEM_ADDR_PRESENT_POSITION, 6, debug=debug)
         new_dict = {}
-        for _id in dev_id:
+        for _id in id_arr:
             if old_dict[_id]['status'] == 0:
                 new_dict[_id] = {}
-                new_dict[_id]['posi'] = int.from_bytes(old_dict[_id]['params'][0:2], byteorder='little')
-                new_dict[_id]['velo'] = int.from_bytes(old_dict[_id]['params'][2:4], byteorder='little')
-                new_dict[_id]['load'] = int.from_bytes(old_dict[_id]['params'][4:6], byteorder='little')
+                new_dict[_id]['posi'] = int.from_bytes(old_dict[_id]['params'][0:2], byteorder=self.BYTE_ORDER)
+                new_dict[_id]['velo'] = int.from_bytes(old_dict[_id]['params'][2:4], byteorder=self.BYTE_ORDER)
+                new_dict[_id]['load'] = int.from_bytes(old_dict[_id]['params'][4:6], byteorder=self.BYTE_ORDER)
             else:
                 print('[ERROR]', _id, old_dict[_id])
         return new_dict
@@ -255,7 +273,7 @@ class EncoderUnwrapper:
         if self.last_raw:
             # 计算相对变化量
             delta = raw_value - self.last_raw
-    
+
             # 处理跳变：如果跨过了0点（顺时针4095->0 或 逆时针0->4095）
             if  delta  >  self.total_step // 2:  # 逆向跳变
                 # 假设逆时针转，跳变前100，跳变后4000，delta为正3900，显著大于最大步数的一半
@@ -263,15 +281,15 @@ class EncoderUnwrapper:
             elif delta < -self.total_step // 2:  # 顺向跳变
                 # 假设顺时针转，跳变前4000，跳变后100，delta为负
                 delta +=  self.total_step
-    
+
             # 累加
             self.posi += delta
             self.last_raw = raw_value
             return None
-        
+
         else:
             # 第一次调用，初始化
-            self.last_raw = raw_value 
+            self.last_raw = raw_value
             return None
 
     def get_degrees(self):
@@ -313,7 +331,7 @@ class Calibrator(ST3215):
         posi_raw = self.readPosi(dev_id=self.dev_id)
         for _id in self.dev_id:
             _posi_raw = posi_raw[_id]["posi"]
-            self.encoder[_id].posi_raw = _posi_raw 
+            self.encoder[_id].posi_raw = _posi_raw
             self.encoder[_id].update(_posi_raw)
             min_step = self.encoder[_id].min_step
             max_step = self.encoder[_id].max_step
@@ -329,7 +347,7 @@ class Calibrator(ST3215):
         print(f' id |  min  | range | corr')
         MARGIN = 100
         for _id in self.dev_id:
-            min  = self.encoder[_id].min_step 
+            min  = self.encoder[_id].min_step
             max  = self.encoder[_id].max_step
             if   min < -2047:
                 corr = 4096 + min
@@ -338,30 +356,30 @@ class Calibrator(ST3215):
             else:
                 corr = min
             corr -= MARGIN
-            if   corr >  2047: 
+            if   corr >  2047:
                 corr  =  2047
-            elif corr < -2047: 
+            elif corr < -2047:
                 corr  = -2047
             print(f'{_id:3d} | {min: 5d} | {max-min: 5d} | {corr: 5d}')
             conf[_id] = {'min':min, 'range':max-min, 'corr':corr}
         return conf
         '''
-        if max - min < 2047: 
+        if max - min < 2047:
             if min > 2047:           # min:3500 raw:3500 corr:min-4096
                 corr = min - 4096
             elif min > 0:
                 corr = min
-            elif min < 0:            # min:-500 raw:3500 corr:-500=min  
+            elif min < 0:            # min:-500 raw:3500 corr:-500=min
                 corr = min
             else:
                 raise
         else: # max - min > 2047     #   min    raw   corr
-            if   min > 2047:         #  3500   3500   -500=min-4000 
-                corr = min - 4096    
-            elif min > 0:            #   500    500    500=min 
-                corr = min    
+            if   min > 2047:         #  3500   3500   -500=min-4000
+                corr = min - 4096
+            elif min > 0:            #   500    500    500=min
+                corr = min
             elif min < -2047:        # -3500    500    500=4000+min
-                corr = 4096 + min  
+                corr = 4096 + min
             elif min < 0:            #  -500   3500   -500=min
                 corr = min
             else:
