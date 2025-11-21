@@ -253,7 +253,12 @@ class ST3215:
         for _id in id_arr:
             if old_dict[_id]['status'] == 0:
                 new_dict[_id] = {}
-                new_dict[_id]['posi'] = int.from_bytes(old_dict[_id]['params'][0:2], byteorder=self.BYTE_ORDER)
+                posi = int.from_bytes(old_dict[_id]['params'][0:2], byteorder=self.BYTE_ORDER)
+                #print(posi)
+                if posi >> 15:
+                    new_dict[_id]['posi'] = -1 * (posi & 0x7FFF) 
+                else: 
+                    new_dict[_id]['posi'] = posi 
                 new_dict[_id]['velo'] = int.from_bytes(old_dict[_id]['params'][2:4], byteorder=self.BYTE_ORDER)
                 new_dict[_id]['load'] = int.from_bytes(old_dict[_id]['params'][4:6], byteorder=self.BYTE_ORDER)
             else:
@@ -309,27 +314,27 @@ if __name__ == "__main__":
         print(f"raw={raw:4d},  posi={encoder.posi:6d},  deg={deg:8.2f}")
 
 class Calibrator(ST3215):
-    def __init__(self, port='COM17', dev_id=[1, 2, 3, 4, 5, 6], abs_max_posi=4095, __set_posi_corr__=True):
+    def __init__(self, port='COM17', id_arr=[1, 2, 3, 4, 5, 6], abs_max_posi=4095, __set_posi_corr__=True):
         super().__init__(port)
         self.total_step = abs_max_posi + 1
-        for _id in dev_id:
+        for _id in id_arr:
             if __set_posi_corr__:
                 self.__set_posi_corr__(dev_id=_id, step=0, save=False)
-        posi_raw = self.readPosi(dev_id=dev_id)
+        posi_raw = self.readPosi(id_arr=id_arr)
         encoder = {_id: EncoderUnwrapper(curr_posi=posi_raw[_id]["posi"], abs_max_posi=abs_max_posi)
-                    for _id in dev_id}
-        for _id in dev_id:
+                    for _id in id_arr}
+        for _id in id_arr:
             encoder[_id].min_step = abs_max_posi
             encoder[_id].max_step = 0
             encoder[_id].posi_raw = 0
         self.encoder = encoder
-        self.dev_id  = dev_id
+        self.id_arr  = id_arr
         print('initialized')
 
     def update(self):
         print(f' id |  min |  max |  len | curr |  raw')
-        posi_raw = self.readPosi(dev_id=self.dev_id)
-        for _id in self.dev_id:
+        posi_raw = self.readPosi(id_arr=self.id_arr)
+        for _id in self.id_arr:
             _posi_raw = posi_raw[_id]["posi"]
             self.encoder[_id].posi_raw = _posi_raw
             self.encoder[_id].update(_posi_raw)
@@ -346,7 +351,7 @@ class Calibrator(ST3215):
         conf = {}
         print(f' id |  min  | range | corr')
         MARGIN = 100
-        for _id in self.dev_id:
+        for _id in self.id_arr:
             min  = self.encoder[_id].min_step
             max  = self.encoder[_id].max_step
             if   min < -2047:
