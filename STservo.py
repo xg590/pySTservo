@@ -23,6 +23,7 @@ class ST3215:
             # define memory table
             #-------EPROM(read only)--------
             self.SMS_STS_MODEL                = 0x03
+            self.MEM_ADDR_ID                  = 0x05
 
             #-------EPROM(read & write)--------
             self.MEM_ADDR_STEP_CORR           = 0x1F
@@ -91,8 +92,8 @@ class ST3215:
                 print(f'[Error] [ID: {id}] Timeout for __recv_packet__]')
                 print(f'[Debug] [ID: {id}] Response: {header}')
                 raise TimeoutError
-        _id       = int.from_bytes(self.ser.read(   1   ))
-        _length   = int.from_bytes(self.ser.read(   1   ))
+        _id       = int.from_bytes(self.ser.read(   1   ), byteorder=self.BYTE_ORDER)
+        _length   = int.from_bytes(self.ser.read(   1   ), byteorder=self.BYTE_ORDER)
         _data     =                self.ser.read(_length)
         data      = list(_data)
         error     = data[0   ]
@@ -229,7 +230,7 @@ class ST3215:
     def get_mode(self, dev_id=1):
         if self.model == 'SCS': raise # There is only one mode for SCS servo
         status, _params = self.read(dev_id, self.MEM_ADDR_MODE, )
-        mode = int.from_bytes(_params)
+        mode = int.from_bytes(_params, byteorder=self.BYTE_ORDER)
         return ['posi', 'wheel', 'pwm', 'step'][mode]
 
     def set_acc(self, id_arr=[1], acc_arr=[1]):
@@ -256,9 +257,9 @@ class ST3215:
                 posi = int.from_bytes(old_dict[_id]['params'][0:2], byteorder=self.BYTE_ORDER)
                 #print(posi)
                 if posi >> 15:
-                    new_dict[_id]['posi'] = -1 * (posi & 0x7FFF) 
+                    new_dict[_id]['posi'] = -1 * (posi & 0x7FFF)
                 else: 
-                    new_dict[_id]['posi'] = posi 
+                    new_dict[_id]['posi'] = posi & 0xFFF
                 new_dict[_id]['velo'] = int.from_bytes(old_dict[_id]['params'][2:4], byteorder=self.BYTE_ORDER)
                 new_dict[_id]['load'] = int.from_bytes(old_dict[_id]['params'][4:6], byteorder=self.BYTE_ORDER)
             else:
@@ -318,6 +319,7 @@ class Calibrator(ST3215):
         super().__init__(port)
         self.total_step = abs_max_posi + 1
         for _id in id_arr:
+            self.__set_torque_mode__(dev_id=_id, mode='free')
             if __set_posi_corr__:
                 self.__set_posi_corr__(dev_id=_id, step=0, save=False)
         posi_raw = self.readPosi(id_arr=id_arr)
